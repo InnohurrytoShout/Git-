@@ -1,0 +1,345 @@
+AA--
+title: "Final Project"
+author: "Yuansong Ding"
+date: "11/20/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(pscl)
+library(caret)
+```
+For the possession part, import the data frame files and clean the data.
+
+```{r}
+harry_possession <- read.csv("HarryMaguire/Possession2017-2018.csv", skip = 1)
+harry_possession <- harry_possession[,!names(harry_possession) %in% c("Day","Round","Comp","Venue","Pos","Opponent","Start","Mid.3rd","Att.3rd","Att.Pen","Succ","Att","Mis","Dis","Rec","Prog", "Match.Report","Live","Result")]
+harry_possession$Def.Pen <- harry_possession$Def.3rd + harry_possession$Def.Pen
+colnames(harry_possession)[5] <- "Def Touches"
+colnames(harry_possession)[colnames(harry_possession) == "Succ."] = "Drib Succ%"
+harry_possession <- harry_possession[,!names(harry_possession) %in% c("Def.3rd")]
+harry_summary_by_years <- subset(tail(harry_possession,n=1),)
+harry_possession <- harry_possession[-nrow(harry_possession),]
+harry_summary_by_years[1,"Date"] = 2017
+harry_summary_by_years[1,"Squad"] = "Leicester City"
+harry_possession$`Drib Succ%`[is.na(harry_possession$`Drib Succ%`)] <- 0
+harry_possession <- drop_na(harry_possession)
+harry_possession <- harry_possession[!harry_possession$Min < 45,]
+
+possession_clean <-function(df){
+  df <- df[,!names(df) %in% c("Day","Round","Comp","Venue","Pos","Opponent","Start","Mid.3rd","Att.3rd","Att.Pen","Succ","Att","Mis","Dis","Rec","Prog", "Match.Report","Live","Result")]
+  colnames(df)[colnames(df) == "Succ."] = "Drib Succ%"
+  df$Def.Pen <- df$Def.3rd + df$Def.Pen
+  colnames(df)[5] <- "Def Touches"
+  df <- df[,!names(df) %in% c("Def.3rd")]
+  harry_summary_by_years <<- rbind(harry_summary_by_years,tail(df,n=1))
+  df$`Drib Succ%`[is.na(df$`Drib Succ%`)] <- 0
+  df <- df[-nrow(df),]
+  df <- drop_na(df)
+  df <- df[!df$Min < 45,]
+  harry_possession <<- rbind(harry_possession,df)
+}
+
+
+possession_clean(read.csv("HarryMaguire/Possession2018-2019.csv",skip = 1))
+harry_summary_by_years[2,"Date"] = 2018
+harry_summary_by_years[2,"Squad"] = "Leicester City"
+
+possession_clean(read.csv("HarryMaguire/Possession2019-2020.csv",skip = 1))
+harry_summary_by_years[3,"Date"] = 2019
+harry_summary_by_years[3,"Squad"] = "Manchester Utd"
+
+possession_clean(read.csv("HarryMaguire/Possession2020-2021.csv",skip = 1))
+harry_summary_by_years[4,"Date"] = 2020
+harry_summary_by_years[4,"Squad"] = "Manchester Utd"
+
+possession_clean(read.csv("HarryMaguire/Possession2021-2022.csv",skip = 1))
+harry_summary_by_years[5,"Date"] = 2021
+harry_summary_by_years[5,"Squad"] = "Manchester Utd"
+
+possession_clean(read.csv("HarryMaguire/Possession2022-2023.csv",skip = 1))
+harry_summary_by_years[6,"Date"] = 2022
+harry_summary_by_years[6,"Squad"] = "Manchester Utd"
+
+rownames(harry_possession) <- 1:nrow(harry_possession)
+rownames(harry_summary_by_years) <- 1:nrow(harry_summary_by_years)
+harry_possession[harry_possession$Squad == "eng Manchester Utd","Squad"] = "Manchester Utd"
+harry_possession[harry_possession$Squad == "eng England","Squad"] = "England"
+```
+
+Roughly plot a graph about touching data
+```{r}
+summary(harry_possession)
+mean_touch_lei <- mean(harry_possession[harry_possession$Squad == "Leicester City", "Touches"])
+mean_touch_Mun <- mean(harry_possession[harry_possession$Squad == "Manchester Utd", "Touches"])
+mean_touch_NT <- mean(harry_possession[harry_possession$Squad == "England", "Touches"])
+pdf(file = "Harry_Maguire_Touches.pdf")
+ggplot(data = harry_possession) +
+  geom_point(mapping = aes(x = factor(Date), y = Touches, color = Squad)) +
+  xlab("Match Date")+
+  geom_hline(aes(yintercept = mean_touch_NT, linetype = "England"), color = "red") +
+  geom_hline(aes(yintercept = mean_touch_lei, linetype = "Leicester City"), color = "green") +
+  geom_hline(aes(yintercept = mean_touch_Mun, linetype = "Manchester Utd"), color = "blue") +
+  scale_linetype_manual(name = "Mean of Touches Per 90 Minutes", values = c(2,2,2), guide = guide_legend(override.aes = list(color = c("red", "green", "blue")))) +
+  facet_wrap(~Squad)+
+  ggtitle("Touches per game for Harry Maguire from season 2017 to now")
+dev.off()
+sd(harry_possession[harry_possession$Squad == "Leicester City", "Touches"])
+sd(harry_possession[harry_possession$Squad == "England", "Touches"])
+sd(harry_possession[harry_possession$Squad == "Manchester Utd", "Touches"])
+```
+
+Now processing the defensive data
+```{r}
+harry_defensive <- read.csv("HarryMaguire/Defensive17-18.csv", skip = 1)
+harry_defensive <- harry_defensive[,!names(harry_defensive) %in% c("Day","Comp","Round","Venue","Opponent","Start","Pos", "Def.3rd","Mid.3rd","Att.3rd","Tkl.", "Match.Report")]
+harry_defensive$Tkl <- harry_defensive$Tkl + harry_defensive$Att
+harry_defensive$TklW <- harry_defensive$TklW + harry_defensive$Tkl.1
+harry_defensive$Blocks <- harry_defensive$Blocks + harry_defensive$Int
+harry_defensive <- harry_defensive[,!names(harry_defensive) %in% c("Att","Tkl.1","Past", "Sh","Pass","Tkl.Int","Int")]
+harry_summary_by_years_2 <- subset(tail(harry_defensive,n=1),)
+harry_defensive <- harry_defensive[-nrow(harry_defensive),]
+harry_summary_by_years_2[1,"Date"] = 2017
+harry_summary_by_years_2[1,"Squad"] = "Leicester City"
+harry_defensive <- harry_defensive[!harry_defensive$Min < 45,]
+harry_defensive <- drop_na(harry_defensive)
+
+defensive_clean <-function(df){
+  df <- df[,!names(df) %in% c("Day","Comp","Round","Venue","Opponent","Start","Pos", "Def.3rd","Mid.3rd","Att.3rd","Tkl.", "Match.Report")]
+  df$Tkl <- df$Tkl + df$Att
+  df$TklW <- df$TklW + df$Tkl.1
+  df$Blocks <- df$Blocks + df$Int
+  df <- df[,!names(df) %in% c("Att","Tkl.1","Past", "Sh","Pass","Tkl.Int","Int")]
+  harry_summary_by_years_2 <<- rbind(harry_summary_by_years_2 ,tail(df,n=1))
+  df <- df[-nrow(df),]
+  df <- drop_na(df)
+  df <- df[!df$Min < 45,]
+  harry_defensive <<- rbind(harry_defensive,df)
+}
+
+defensive_clean(read.csv("HarryMaguire/Defensive18-19.csv",skip = 1))
+harry_summary_by_years_2[2,"Date"] = 2018
+harry_summary_by_years_2[2,"Squad"] = "Leicester City"
+
+defensive_clean(read.csv("HarryMaguire/Defensive19-20.csv",skip = 1))
+harry_summary_by_years_2[3,"Date"] = 2019
+harry_summary_by_years_2[3,"Squad"] = "Manchester Utd"
+
+defensive_clean(read.csv("HarryMaguire/Defensive20-21.csv",skip = 1))
+harry_summary_by_years_2[4,"Date"] = 2020
+harry_summary_by_years_2[4,"Squad"] = "Manchester Utd"
+
+defensive_clean(read.csv("HarryMaguire/Defensive21-22.csv",skip = 1))
+harry_summary_by_years_2[5,"Date"] = 2021
+harry_summary_by_years_2[5,"Squad"] = "Manchester Utd"
+
+defensive_clean(read.csv("HarryMaguire/Defensive22-23.csv",skip = 1))
+harry_summary_by_years_2[6,"Date"] = 2022
+harry_summary_by_years_2[6,"Squad"] = "Manchester Utd"
+
+rownames(harry_defensive) <- 1:nrow(harry_defensive)
+rownames(harry_summary_by_years_2) <- 1:nrow(harry_summary_by_years_2)
+harry_defensive[harry_defensive$Squad == "eng Manchester Utd","Squad"] = "Manchester Utd"
+harry_defensive[harry_defensive$Squad == "eng England","Squad"] = "England"
+```
+
+Now working on Passing data
+```{r}
+harry_passing <- read.csv("HarryMaguire/Passing17-18.csv", skip = 1)
+harry_passing <- harry_passing[,1:14]
+head(harry_passing)
+harry_passing <- harry_passing[,!names(harry_passing) %in% c("Day","Comp","Round","Venue","Opponent","Start","Pos")]
+harry_summary_by_years_3 <- subset(tail(harry_passing,n=1),)
+harry_passing <- harry_passing[-nrow(harry_passing),]
+harry_summary_by_years_3[1,"Date"] = 2017
+harry_summary_by_years_3[1,"Squad"] = "Leicester City"
+harry_passing <- harry_passing[!harry_passing$Min < 45,]
+harry_passing <- drop_na(harry_passing)
+
+passing_clean <-function(df){
+  df <- df[,1:14]
+  df <- df[,!names(df) %in% c("Day","Comp","Round","Venue","Opponent","Start","Pos")]
+harry_summary_by_years_3 <<- rbind(harry_summary_by_years_3 ,tail(df,n=1))
+df <- df[-nrow(df),]
+df <- drop_na(df)
+df <- df[!df$Min < 45,]
+harry_passing <<- rbind(harry_passing,df)
+}
+
+passing_clean(read.csv("HarryMaguire/Passing18-19.csv",skip = 1))
+harry_summary_by_years_3[2,"Date"] = 2018
+harry_summary_by_years_3[2,"Squad"] = "Leicester City"
+
+passing_clean(read.csv("HarryMaguire/Passing19-20.csv",skip = 1))
+harry_summary_by_years_3[3,"Date"] = 2019
+harry_summary_by_years_3[3,"Squad"] = "Manchester Utd"
+
+passing_clean(read.csv("HarryMaguire/Passing20-21.csv",skip = 1))
+harry_summary_by_years_3[4,"Date"] = 2020
+harry_summary_by_years_3[4,"Squad"] = "Manchester Utd"
+
+passing_clean(read.csv("HarryMaguire/Passing21-22.csv",skip = 1))
+harry_summary_by_years_3[5,"Date"] = 2021
+harry_summary_by_years_3[5,"Squad"] = "Manchester Utd"
+
+passing_clean(read.csv("HarryMaguire/Passing22-23.csv",skip = 1))
+harry_summary_by_years_3[6,"Date"] = 2022
+harry_summary_by_years_3[6,"Squad"] = "Manchester Utd"
+
+rownames(harry_passing) <- 1:nrow(harry_passing)
+rownames(harry_summary_by_years_3) <- 1:nrow(harry_summary_by_years_3)
+harry_passing[harry_passing$Squad == "eng Manchester Utd","Squad"] = "Manchester Utd"
+harry_passing[harry_passing$Squad == "eng England","Squad"] = "England"
+```
+Now merging the data frame
+```{r}
+harry_summary <- merge(harry_summary_by_years, harry_summary_by_years_2)
+harry_summary <- merge(harry_summary, harry_summary_by_years_3)
+colnames(harry_summary)[colnames(harry_summary) == "Cmp"] <- "Pass Complete"
+colnames(harry_summary)[colnames(harry_summary) == "Att"] <- "Pass Attempt"
+colnames(harry_summary)[colnames(harry_summary) == "Cmp."] <- "Pass Complete Rate"
+Defence_Touch_Rate <- c(harry_summary$`Def Touches`/harry_summary$Touches * 100)
+Tackle_Win_Rate <- c(harry_summary$TklW/harry_summary$Tkl * 100)
+harry_summary["Defence Touch Rate"] <- Defence_Touch_Rate
+harry_summary["Tackle Win Rate"] <- Tackle_Win_Rate
+
+harry_possession$Date <- harry_defensive$Date
+harry_per_game <- left_join(harry_defensive, harry_passing)
+harry_per_game <- left_join(harry_per_game, harry_possession)
+
+harry_per_game[42,"Result"] <- "D 1–1"
+harry_per_game[171,"Result"] <- "D 1–1"
+harry_per_game <- harry_per_game %>% separate(Result, c("Result","Score"), sep = " ")
+harry_per_game <- harry_per_game %>% separate(Score, c("Lost Goal", NA))
+harry_per_game <- harry_per_game %>%
+  mutate_if(is.factor, as.integer) %>%
+  mutate(Result = case_when(Result == "W" ~ 1,
+                           TRUE ~ 0))
+harry_per_game$`Lost Goal` <- strtoi(harry_per_game$`Lost Goal`)
+harry_per_game$`Drib Succ%` <- harry_per_game$`Drib Succ%` / 100
+harry_per_game$Cmp. <- harry_per_game$Cmp. / 100
+harry_per_game["Tackle Win Rate"] <- harry_per_game$TklW / harry_per_game$Tkl
+harry_per_game$`Tackle Win Rate`[is.na(harry_per_game$`Tackle Win Rate`)] <- 0
+harry_per_game["Def Touch Rate"] <- harry_per_game$`Def Touches` / harry_per_game$Touches
+sapply(harry_per_game, sd)
+```
+Bringing in new factors as we cannot find good model with current factors
+```{r}
+AD <- read.csv("HarryMaguire/Aerial17-18.csv",skip = 1)
+AD <- rbind(AD, read.csv("HarryMaguire/Aerial18-19.csv",skip = 1))
+AD <- rbind(AD, read.csv("HarryMaguire/Aerial19-20.csv",skip = 1))
+AD <- rbind(AD, read.csv("HarryMaguire/Aerial20-21.csv",skip = 1))
+AD <- rbind(AD, read.csv("HarryMaguire/Aerial21-22.csv",skip = 1))
+AD <- rbind(AD, read.csv("HarryMaguire/Aerial22-23.csv",skip = 1))
+AD <- drop_na(AD)
+ADs <- AD %>%
+        filter(Recov >= 30)
+AD <- AD %>%
+        filter(Recov <= 30)
+AD$Won. <- AD$Won./100
+harry_per_game <- left_join(harry_per_game, AD)
+harry_per_game[,c("Recov")][is.na(harry_per_game$Recov)] <- 0
+harry_per_game[,c("Won.")][is.na(harry_per_game$`Won.`)] <- 0
+```
+```{r}
+fm <- harry_per_game[,!names(harry_per_game) %in% c("Tkl","TklW","Cmp","Att","Touches","Def Touches","Pos","Err")]
+fm <- fm %>%
+  mutate_if(is.factor, as.integer) %>%
+  mutate(SquadCode = case_when(Squad == "Manchester Utd" ~ 1,
+                           TRUE ~ 0))
+
+fm <- fm %>%
+  mutate(Yearcode = case_when(Date <= "2018-06-28" ~ 1,
+                          Date <= "2019-06-09" ~ 2,
+                          Date <= "2020-08-16" ~ 3,
+                          Date <= "2021-06-29" ~ 4,
+                          TRUE ~ 5))
+
+str(fm)
+```
+Build logistic regression model on Result as 
+Dependent Variable: Result have 3 outcome, win~1, draw and lose~0.
+
+Independent Variable: 
+
+$x_1$ Squadcode: Manchester Utd ~ 1, other team ~ 0, as Harry maguaire had better performance in both Leicester City and National Team
+$x_2$ Pass Complete Rate, 
+$x_3$ Tackle Win Rate, Tackle Win/ Tackle Done
+$x_4$ Number of Clearance Made, 
+$x_5$ Recover from loose ball, 
+$x_6$ Aerial Ball Won
+$x_7$ Blocks
+$x_8$ Dribble Success%
+$x_9$ Different Season: from season 2017 to 2022 with 1~5
+
+```{r}
+sink("Model_Output.txt",append = T)
+set.seed(1)
+sample <- sample(c(TRUE, FALSE), nrow(fm), replace =TRUE, prob = c(0.7,0.3))
+train <- fm[sample,]
+test <- fm[!sample,]
+mylogit <- glm(`Result` ~ SquadCode + `Cmp.`+ `Tackle Win Rate`  + Clr + Recov + `Won.` +  Blocks + `Drib Succ%` + Yearcode, family = "binomial", data = train)
+summary(mylogit)
+pscl::pR2(mylogit)["McFadden"]
+caret::varImp(mylogit)
+sink()
+```
+
+Plot the graph we probably need
+```{r}
+fm["Year"] <- as.factor(year(fm$Date))
+by_year <- fm %>% group_by(Year)
+Year2022 <- by_year %>% filter(Year == 2022)
+Year2021 <- by_year %>% filter(Year == 2021)
+Year2020 <- by_year %>% filter(Year == 2020)
+Year2019 <- by_year %>% filter(Year == 2019)
+Year2018 <- by_year %>% filter(Year == 2018)
+Year2017 <- by_year %>% filter(Year == 2017)
+mean_twr_MCU_2022 <- mean(Year2022$`Tackle Win Rate`)
+mean_twr_MCU_2021 <- mean(Year2021$`Tackle Win Rate`)
+mean_twr_MCU_2020 <- mean(Year2020$`Tackle Win Rate`)
+mean_twr_MCU_2019 <- mean(Year2019$`Tackle Win Rate`)
+mean_twr_MCU_2018 <- mean(Year2018$`Tackle Win Rate`)
+mean_twr_MCU_2017 <- mean(Year2017$`Tackle Win Rate`)
+pdf(file="Maguire_Tackle_Win_Rate.pdf")
+ggplot(data = fm)+
+  geom_histogram(mapping = aes(x = `Tackle Win Rate`, fill = Year, color = Squad), bins = 10, size = 1.2)+
+  geom_vline(aes(xintercept = mean_twr_MCU_2021, linetype = "2021 Tackle Win Rate"), color = "pink")+
+  geom_vline(aes(xintercept = mean_twr_MCU_2020, linetype = "2020 Tackle Win Rate"), color = "green")+
+  geom_vline(aes(xintercept = mean_twr_MCU_2019, linetype = "2019 Tackle Win Rate"), color = "blue")+
+  geom_vline(aes(xintercept = mean_twr_MCU_2018, linetype = "2018 Tackle Win Rate"), color = "brown")+
+  geom_vline(aes(xintercept = mean_twr_MCU_2017, linetype = "2017 Tackle Win Rate"), color = "orange")+
+  scale_linetype_manual(name = "Mean of Tackle Win Rate Per Season", values = c(1,1,1,1,1), guide = guide_legend(override.aes = list(color = c("orange","brown","blue","green","pink"))))+
+  ggtitle("Tackle Win Rate by Season")
+dev.off()
+```
+Another Graph
+```{r}
+mean_clr_MCU_2022 <- mean(Year2022$`Clr`)
+mean_clr_MCU_2021 <- mean(Year2021$`Clr`)
+mean_clr_MCU_2020 <- mean(Year2020$`Clr`)
+mean_clr_MCU_2019 <- mean(Year2019$`Clr`)
+mean_clr_MCU_2018 <- mean(Year2018$`Clr`)
+mean_clr_MCU_2017 <- mean(Year2017$`Clr`)
+mean_won_MCU_2022 <- mean(Year2022$`Won.`)
+mean_won_MCU_2021 <- mean(Year2021$`Won.`)
+mean_won_MCU_2020 <- mean(Year2020$`Won.`)
+mean_won_MCU_2019 <- mean(Year2019$`Won.`)
+mean_won_MCU_2018 <- mean(Year2018$`Won.`)
+mean_won_MCU_2017 <- mean(Year2017$`Won.`)
+harry_summary["Air_Mean"] <- c(mean_won_MCU_2017,mean_won_MCU_2018,mean_won_MCU_2019,mean_won_MCU_2020,mean_won_MCU_2021,mean_won_MCU_2022)
+harry_summary["Clr_Mean"] <- c(mean_clr_MCU_2017,mean_clr_MCU_2018,mean_clr_MCU_2019,mean_clr_MCU_2020,mean_clr_MCU_2021,mean_clr_MCU_2022)
+pdf(file = "Airball win rate and Clearancej.pdf")
+ggplot(data = harry_summary)+
+  geom_line(aes(x = Date, y = Clr_Mean, group = 1, color = Squad))+
+  geom_line(aes(x = Date, y = Air_Mean, group = 1, color = Squad))+
+  geom_text(aes(x = "2021", y = 1, label = "Airball win Rate"), show.legend = FALSE)+
+  geom_text(aes(x = "2021", y = 4, label = "Clearance"), show.legend = FALSE)+
+  geom_hline(aes(yintercept = min(Air_Mean)), linetype = "dotted")+
+  ylab("Count")+
+  ggtitle("Airball win rate and Clearance")
+dev.off()
+```

@@ -1,0 +1,36 @@
+
+Call:
+glm(formula = Result ~ SquadCode + Cmp. + `Tackle Win Rate` + 
+    Clr + Recov + Won. + Blocks + `Drib Succ%` + Yearcode, family = "binomial", 
+    data = train)
+
+Deviance Residuals: 
+    Min       1Q   Median       3Q      Max  
+-1.7586  -0.9975  -0.4689   1.0560   2.0936  
+
+Coefficients:
+                   Estimate Std. Error z value Pr(>|z|)   
+(Intercept)       -2.077359   2.453764  -0.847  0.39722   
+SquadCode          1.125493   0.611236   1.841  0.06557 . 
+Cmp.               0.867946   2.725629   0.318  0.75015   
+`Tackle Win Rate`  1.577306   0.494042   3.193  0.00141 **
+Clr                0.182698   0.071164   2.567  0.01025 * 
+Recov             -0.088062   0.069383  -1.269  0.20437   
+Won.              -1.408459   0.738431  -1.907  0.05647 . 
+Blocks            -0.001232   0.099637  -0.012  0.99014   
+`Drib Succ%`       0.875701   0.453298   1.932  0.05338 . 
+Yearcode           0.078109   0.215069   0.363  0.71647   
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 204.20  on 147  degrees of freedom
+Residual deviance: 179.37  on 138  degrees of freedom
+AIC: 199.37
+
+Number of Fisher Scoring iterations: 3
+
+fitting null model for pseudo-r2
+ McFadden 
+0.1215691 
